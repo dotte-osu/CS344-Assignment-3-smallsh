@@ -6,7 +6,19 @@
 #include <string.h>
 #include <unistd.h> // getpid, getppid
 
+/* struct for commands */
+struct inputData{
+    char    *command;
+    char    *args;
+    char    *input_file;
+    char    *output_file;
+    bool    isBackground;
+    char    *comment;
+    bool    isComment;
+};
+
 //Function to replace string
+//reference https://www.geeksforgeeks.org/c-program-replace-word-text-another-given-word/
 char* replaceStr(char *basestr, char *pid)
 {
     int i = 0;
@@ -16,7 +28,7 @@ char* replaceStr(char *basestr, char *pid)
     for (i = 0; basestr[i] != '\0'; i++) {
         //remove char from the front of string. check is string start with "$$"
         if (strstr(&basestr[i], "$$") == &basestr[i]) {
-            //found
+            //if found, check how many time we need to replace
             count++;
   
             //skip index for "$$"
@@ -29,7 +41,7 @@ char* replaceStr(char *basestr, char *pid)
     int length = strlen(basestr) -1 + count*(pidLen - 2) + 1;
     char *result = (char*)malloc(length);
 
-    i = 0;
+    i = 0;//this is index for result string
     while (*basestr) {
         //remove char from the front of string. check is string start with "$$"
         if (strstr(basestr, "$$") == basestr) {
@@ -41,7 +53,9 @@ char* replaceStr(char *basestr, char *pid)
         }
         else{
             //copy the other part of string
-            result[i++] = *basestr++;
+            result[i] = *basestr;
+            i++;
+            basestr++;
         }    
     }
   
@@ -82,8 +96,64 @@ char *getUserInput(){
     return replacedInput == NULL ? input : replacedInput;
 }
 
-char** parseInput(char *input, char* command, char **args){
-    printf(":%s \n", input);
+struct inputData *parseInput(char *input){
+    struct inputData *currData = malloc(sizeof(struct inputData));
+    
+    //Check for comment
+    if(input[0] == '#') {
+        currData->comment = calloc(strlen(input) + 1, sizeof(char));
+        strcpy(currData->comment, input);
+        currData->isComment = true;
+        //printf("comment %s\n", currData->comment);
+        return currData;
+    }
+
+    //Get command
+    char *saveptr;
+    
+    //First word is always command
+    char *token = strtok_r(input, " ", &saveptr);
+    currData->command = calloc(strlen(token) + 1, sizeof(char));
+    strcpy(currData->command, token);
+    //printf("command %s\n", currData->command);
+
+    //args, input file, output file
+    while(token){
+        //printf("token %s\n", token);
+        if(strcmp(token, "<") == 0 ){
+            token = strtok_r(NULL, " ", &saveptr);
+            if(!token) return currData;
+            currData->input_file = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currData->input_file, token);
+            //printf("input_file %s\n", currData->input_file);
+        }
+        else if(strcmp(token, ">") == 0 ){
+            token = strtok_r(NULL, " ", &saveptr);
+            if(!token) return currData;
+            currData->output_file = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currData->output_file, token);
+            //printf("output_file %s\n", currData->output_file);
+ 
+        }else if(strcmp(token, "&") == 0 ){
+            token = strtok_r(NULL, "\n", &saveptr);
+            if(!token) return currData;
+            currData->isBackground = true;
+
+        }
+        else{
+
+            token = strtok_r(NULL, "\n", &saveptr);
+            if(!token) return currData;
+            currData->args = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currData->args, token);
+            //printf("args %s\n", currData->args);
+            return currData;
+        }
+    }
+    
+
+
+    return currData;
 }
 
 int main(){
@@ -100,7 +170,7 @@ int main(){
         input = getUserInput();
         
         //parse user input
-        parseInput(input, command, args);
+        struct inputData *currData = parseInput(input);
 
 
         if (strcmp(input, "exit") == 0) eof = true;
