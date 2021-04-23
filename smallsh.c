@@ -6,16 +6,20 @@
 #include <string.h>
 #include <unistd.h> // getpid, getppid
 
+#define MAX_ARG 500
+#define debug false
+
 /* struct for commands */
 struct inputData{
     char    *command;
-    char    *args;
+    char    **args;
     char    *input_file;
     char    *output_file;
     bool    isBackground;
-    char    *comment;
     bool    isComment;
 };
+
+
 
 //Function to replace string
 //reference https://www.geeksforgeeks.org/c-program-replace-word-text-another-given-word/
@@ -101,8 +105,6 @@ struct inputData *parseInput(char *input){
     
     //Check for comment
     if(input[0] == '#') {
-        currData->comment = calloc(strlen(input) + 1, sizeof(char));
-        strcpy(currData->comment, input);
         currData->isComment = true;
         //printf("comment %s\n", currData->comment);
         return currData;
@@ -118,36 +120,30 @@ struct inputData *parseInput(char *input){
     //printf("command %s\n", currData->command);
 
     //args, input file, output file
+    currData->args = malloc(MAX_ARG * sizeof(char*));
+    int i = 0;
     while(token){
         //printf("token %s\n", token);
-        if(strcmp(token, "<") == 0 ){
-            token = strtok_r(NULL, " ", &saveptr);
+        token = strtok_r(NULL, " ", &saveptr);
             if(!token) return currData;
+
+        if(strcmp(token, "<") == 0 )
+        {
             currData->input_file = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currData->input_file, token);
-            //printf("input_file %s\n", currData->input_file);
         }
-        else if(strcmp(token, ">") == 0 ){
-            token = strtok_r(NULL, " ", &saveptr);
-            if(!token) return currData;
+        else if(strcmp(token, ">") == 0 )
+        {
             currData->output_file = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(currData->output_file, token);
-            //printf("output_file %s\n", currData->output_file);
- 
-        }else if(strcmp(token, "&") == 0 ){
-            token = strtok_r(NULL, "\n", &saveptr);
-            if(!token) return currData;
+            strcpy(currData->output_file, token); 
+        }else if(strcmp(token, "&") == 0 )
+        {
             currData->isBackground = true;
-
         }
-        else{
-
-            token = strtok_r(NULL, "\n", &saveptr);
-            if(!token) return currData;
-            currData->args = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(currData->args, token);
-            //printf("args %s\n", currData->args);
-            return currData;
+        else
+        {
+            currData->args[i] = token; 
+            i++;
         }
     }
     
@@ -161,16 +157,49 @@ int main(){
     bool eof = false;
     char *input;
     char *command;
-    char **args;
 
     //Loop until end of file
     while(!eof){
 
         //get user input
         input = getUserInput();
-        
+
+        //ignroe blank line
+        if(!strcmp(input, "")) continue;
+
+        //print command
+        printf(":::::%s\n", input);
+
         //parse user input
         struct inputData *currData = parseInput(input);
+
+        //ignore comment
+        if(currData->isComment) continue;
+
+        //print args (debug)
+        if(debug){
+            int i = 0;
+            while(currData->args[i]){
+                printf("args: %s\n", currData->args[i]);
+                i++;
+            }
+        }
+        
+        //create path
+        char path[] = "/bin/";
+        char *command = calloc(strlen(currData->command) + 1, sizeof(char));
+        strcpy(command, currData->command);
+        strcat(path, command);
+        if(debug) printf("path: %s\n", path);
+
+        
+        //execute Built-in Commands (exit, cd, and status)
+
+
+        
+        //execute other commands
+
+
 
 
         if (strcmp(input, "exit") == 0) eof = true;
