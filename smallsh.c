@@ -7,7 +7,7 @@
 #include <unistd.h> // getpid, getppid
 
 #define MAX_ARG 500
-#define debug false
+#define PATH_MAX 1000
 
 /* struct for commands */
 struct inputData{
@@ -16,7 +16,6 @@ struct inputData{
     char    *input_file;
     char    *output_file;
     bool    isBackground;
-    bool    isComment;
 };
 
 
@@ -81,6 +80,12 @@ char *getUserInput(){
 	ssize_t bufsize = 0;
 	getline(&input, &bufsize, stdin);
 
+    //ignore comment
+    if(input[0]=='#') return "";;
+
+    //print command before replaceing $$
+    printf(":%s", input);
+
     //Remove newline from the end
     input[strlen(input) - 1] = 0;
     
@@ -102,13 +107,6 @@ char *getUserInput(){
 
 struct inputData *parseInput(char *input){
     struct inputData *currData = malloc(sizeof(struct inputData));
-    
-    //Check for comment
-    if(input[0] == '#') {
-        currData->isComment = true;
-        //printf("comment %s\n", currData->comment);
-        return currData;
-    }
 
     //Get command
     char *saveptr;
@@ -146,17 +144,87 @@ struct inputData *parseInput(char *input){
             i++;
         }
     }
-    
-
 
     return currData;
 }
+
+void cd(char **args){
+
+    //char cwd[PATH_MAX];
+    //getcwd(cwd, sizeof(cwd));
+    //printf("Current working dir: %s\n", cwd);
+    
+    if(args[0] == NULL){
+        //go to home directly
+        if(chdir(getenv("HOME")) != 0) perror("chdir"); //chdir: Bad address
+    }
+    else
+    {
+        //move to a directly
+        if(chdir(args[0]) != 0) perror("chdir");//chdir: Bad address
+    }
+
+    //char ncwd[PATH_MAX];
+    //getcwd(ncwd, sizeof(ncwd));
+    //printf("After command  dir: %s\n", ncwd);
+}
+
+//Exploration: Process API - Monitoring Child Processes
+void status(int status){
+    if (WIFEXITED(status)) {
+		// If exited by status
+		printf("exit value %d\n", WEXITSTATUS(status));
+	} else {
+		// If terminated by signal
+		printf("terminated by signal %d\n", WTERMSIG(status));
+	}
+}
+
+
+void excuteOthers(char *command, char **args){
+    //char **newargv[] = { command, "do something", NULL };
+    char **newargv = malloc(MAX_ARG * sizeof(char*));
+    newargv[0] = command;
+    int i=0;
+    while(args[i]){
+        newargv[i+1] = args[i];
+        i++;
+    }
+
+	int childStatus;
+
+    //Exploration: Process API - Executing a New Program
+	// Fork a new process
+	pid_t spawnPid = fork();
+
+	switch(spawnPid){
+	case -1:
+		perror("fork()\n");
+		exit(1);
+		break;
+	case 0:
+		//Run command in the child process
+        //printf("    CHILD(%d) running command\n", getpid());
+		execvp(newargv[0], newargv);
+		// exec only returns if there is an error
+		perror("execve");
+		exit(2);
+		break;
+	default:
+		//In the parent process
+		//Wait for child's termination
+		spawnPid = waitpid(spawnPid, &childStatus, 0);
+		//printf("    PARENT(%d): child(%d) terminated. Exiting\n", getpid(), spawnPid);
+		break;
+	} 
+}
+
 
 int main(){
 
     bool eof = false;
     char *input;
-    char *command;
+    int exitStatus = 0;
 
     //Loop until end of file
     while(!eof){
@@ -167,47 +235,30 @@ int main(){
         //ignroe blank line
         if(!strcmp(input, "")) continue;
 
-        //print command
-        printf(":::::%s\n", input);
-
         //parse user input
         struct inputData *currData = parseInput(input);
 
-        //ignore comment
-        if(currData->isComment) continue;
-
         //print args (debug)
-        if(debug){
-            int i = 0;
-            while(currData->args[i]){
-                printf("args: %s\n", currData->args[i]);
-                i++;
-            }
-        }
+        //int i = 0;
+        //while(currData->args[i]){
+        //    printf("args: %s\n", currData->args[i]);
+        //    i++;
+        //}
         
         //create path
-        char path[] = "/bin/";
-        char *command = calloc(strlen(currData->command) + 1, sizeof(char));
-        strcpy(command, currData->command);
-        strcat(path, command);
-        if(debug) printf("path: %s\n", path);
-
+        //char path[] = "/bin/";
+        //char *command = calloc(strlen(currData->command) + 1, sizeof(char));
+        //strcpy(command, currData->command);
+        //strcat(path, command);
+        //printf("path: %s\n", path);
         
-        //execute Built-in Commands (exit, cd, and status)
-
-
-        
-        //execute other commands
-
-
-
+        //execute Built-in Commands first(exit, cd, and status)
+        if(strcmp(currData->command, "cd") == 0) cd(currData->args);
+        else if(strcmp(currData->command, "status") == 0) status(exitStatus);
+        else excuteOthers(currData->command, currData->args);
 
         if (strcmp(input, "exit") == 0) eof = true;
     }
-    
-    
-
-    
     
     return 0;
 }
