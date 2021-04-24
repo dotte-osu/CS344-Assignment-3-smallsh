@@ -5,16 +5,18 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h> // getpid, getppid
+#include <fcntl.h>
 
-#define MAX_ARG 500
+#define MAX_ARG 512
+#define MAX_COMMAND 2048 
 #define PATH_MAX 1000
 
 /* struct for commands */
 struct inputData{
-    char    *command;
+    char    command[MAX_COMMAND];
     char    **args;
-    char    *input_file;
-    char    *output_file;
+    char    *inputFile;
+    char    *outputFile;
     bool    isBackground;
 };
 
@@ -113,7 +115,7 @@ struct inputData *parseInput(char *input){
     
     //First word is always command
     char *token = strtok_r(input, " ", &saveptr);
-    currData->command = calloc(strlen(token) + 1, sizeof(char));
+    //currData->command = calloc(strlen(token) + 1, sizeof(char));
     strcpy(currData->command, token);
     //printf("command %s\n", currData->command);
 
@@ -127,14 +129,17 @@ struct inputData *parseInput(char *input){
 
         if(strcmp(token, "<") == 0 )
         {
-            currData->input_file = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(currData->input_file, token);
+            token = strtok_r(NULL, " ", &saveptr);
+            currData->inputFile = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currData->inputFile, token);
         }
         else if(strcmp(token, ">") == 0 )
         {
-            currData->output_file = calloc(strlen(token) + 1, sizeof(char));
-            strcpy(currData->output_file, token); 
-        }else if(strcmp(token, "&") == 0 )
+            token = strtok_r(NULL, " ", &saveptr);
+            currData->outputFile = calloc(strlen(token) + 1, sizeof(char));
+            strcpy(currData->outputFile, token); 
+        }
+        else if(strcmp(token, "&") == 0 )
         {
             currData->isBackground = true;
         }
@@ -181,7 +186,7 @@ void status(int status){
 }
 
 
-void excuteOthers(char *command, char **args){
+void excuteOthers(char *command, char **args, char* inputFile, char* outputFile){
     //char **newargv[] = { command, "do something", NULL };
     char **newargv = malloc(MAX_ARG * sizeof(char*));
     newargv[0] = command;
@@ -192,6 +197,9 @@ void excuteOthers(char *command, char **args){
     }
 
 	int childStatus;
+    int inFile;
+    int outFile;
+    int result;
 
     //Exploration: Process API - Executing a New Program
 	// Fork a new process
@@ -205,10 +213,60 @@ void excuteOthers(char *command, char **args){
 	case 0:
 		//Run command in the child process
         //printf("    CHILD(%d) running command\n", getpid());
-		execvp(newargv[0], newargv);
+
+        //Exploration: Processes and I/O
+        //set input
+        if (inputFile) {
+            // Open input file
+            inFile = open(inputFile, O_RDONLY);
+            if (inFile == -1) {
+                perror("source open()"); 
+                exit(1);
+            }
+            // Write to terminal
+	        //printf("inFile == %d\n", inFile); 
+
+            // Redirect stdin to input file
+            result = dup2(inFile, 0);
+            if (result == -1) {
+                perror("source dup2()"); 
+                exit(2);
+            }
+            // Close
+            fcntl(inFile, F_SETFD, FD_CLOEXEC);
+        }
+
+        //set output
+        if (outputFile) {
+            // open it
+            outFile = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            if (outFile == -1) {
+                perror("Unable to open output file\n");
+                exit(1);
+            }
+            // Write to terminal
+            //printf("outFile == %d\n", outFile); 
+
+            // Redirect stdout to output file
+            result = dup2(outFile, 1);
+            if (result == -1) {
+                perror("Unable to assign output file\n");
+                exit(2);
+            }
+            // Close
+            fcntl(outFile, F_SETFD, FD_CLOEXEC);
+        }
+
+
+		//execvp(newargv[0], newargv);
+        if (execvp(newargv[0], newargv)) {
+			perror("execve");
+		    exit(2);
+		}
+
+
 		// exec only returns if there is an error
-		perror("execve");
-		exit(2);
+		
 		break;
 	default:
 		//In the parent process
@@ -255,7 +313,7 @@ int main(){
         //execute Built-in Commands first(exit, cd, and status)
         if(strcmp(currData->command, "cd") == 0) cd(currData->args);
         else if(strcmp(currData->command, "status") == 0) status(exitStatus);
-        else excuteOthers(currData->command, currData->args);
+        else excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile);
 
         if (strcmp(input, "exit") == 0) eof = true;
     }
