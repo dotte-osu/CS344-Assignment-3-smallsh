@@ -11,6 +11,8 @@
 #define MAX_COMMAND 2048 
 #define PATH_MAX 1000
 
+int bgCount = 0;
+
 /* struct for commands */
 struct inputData{
     char    command[MAX_COMMAND];
@@ -141,10 +143,13 @@ struct inputData *parseInput(char *input){
         }
         else if(strcmp(token, "&") == 0 )
         {
+            // The last word must be &. If the & character appears anywhere else.
+            // If this is not the last word, it will set to false (see next line)
             currData->isBackground = true;
         }
         else
         {
+            currData->isBackground = false;
             currData->args[i] = token; 
             i++;
         }
@@ -185,8 +190,31 @@ void status(int status){
 	}
 }
 
+//Exploration: Process API - Monitoring Child Processes
+void checkBackground(){
+	pid_t bgPid;
+    int   bgStatus;
+    bgPid = waitpid(-1, &bgStatus, WNOHANG);
 
-void excuteOthers(char *command, char **args, char* inputFile, char* outputFile){
+    // Wait till pgPid returns > 0. If the child hasn't terminated, waitpid will immediately return with value 0
+    if(bgPid > 0) {
+        if(WIFEXITED(bgStatus)){
+            // It exit normally
+            printf("background pid %d is done. exit value %d\n", bgPid, WEXITSTATUS(bgStatus));
+            fflush(stdout);
+            bgCount--;
+        } 
+        else{
+            // Did not exit normally
+            printf("background pid %d is done. terminated by signal %d\n", bgPid, WTERMSIG(bgStatus));
+            fflush(stdout);
+            bgCount--;
+        }
+    }
+}
+
+
+void excuteOthers(char *command, char **args, char* inputFile, char* outputFile, bool isBackground){
     //char **newargv[] = { command, "do something", NULL };
     char **newargv = malloc(MAX_ARG * sizeof(char*));
     newargv[0] = command;
@@ -257,25 +285,34 @@ void excuteOthers(char *command, char **args, char* inputFile, char* outputFile)
             fcntl(outFile, F_SETFD, FD_CLOEXEC);
         }
 
-
-		//execvp(newargv[0], newargv);
         if (execvp(newargv[0], newargv)) {
 			perror("execve");
 		    exit(2);
 		}
 
-
-		// exec only returns if there is an error
-		
 		break;
 	default:
+
+        //Exploration: Process API - Monitoring Child Processes
 		//In the parent process
-		//Wait for child's termination
-		spawnPid = waitpid(spawnPid, &childStatus, 0);
-		//printf("    PARENT(%d): child(%d) terminated. Exiting\n", getpid(), spawnPid);
+        if (!isBackground){
+            //Wait for child's termination
+            spawnPid = waitpid(spawnPid, &childStatus, 0);
+            //printf("    PARENT(%d): child(%d) terminated. Exiting\n", getpid(), spawnPid);
+        }
+        else{
+            //Don't wait for child's termination
+            //pid_t pid = waitpid(spawnPid, childStatus, WNOHANG);
+            printf("background pid is %d\n", spawnPid);
+            bgCount++;
+            fflush(stdout);
+        }
+		
 		break;
 	} 
 }
+
+
 
 
 int main(){
@@ -289,6 +326,9 @@ int main(){
 
         //get user input
         input = getUserInput();
+
+        // Check background status
+        if(bgCount > 0) checkBackground();
 
         //ignroe blank line
         if(!strcmp(input, "")) continue;
@@ -313,7 +353,7 @@ int main(){
         //execute Built-in Commands first(exit, cd, and status)
         if(strcmp(currData->command, "cd") == 0) cd(currData->args);
         else if(strcmp(currData->command, "status") == 0) status(exitStatus);
-        else excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile);
+        else excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile, currData->isBackground);
 
         if (strcmp(input, "exit") == 0) eof = true;
     }
