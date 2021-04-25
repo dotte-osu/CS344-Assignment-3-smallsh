@@ -214,7 +214,7 @@ void checkBackground(){
 }
 
 
-void excuteOthers(char *command, char **args, char* inputFile, char* outputFile, bool isBackground){
+int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, bool isBackground){
     //char **newargv[] = { command, "do something", NULL };
     char **newargv = malloc(MAX_ARG * sizeof(char*));
     newargv[0] = command;
@@ -224,7 +224,7 @@ void excuteOthers(char *command, char **args, char* inputFile, char* outputFile,
         i++;
     }
 
-	int childStatus;
+	int childStatus = 0;
     int inFile;
     int outFile;
     int result;
@@ -299,6 +299,7 @@ void excuteOthers(char *command, char **args, char* inputFile, char* outputFile,
             //Wait for child's termination
             spawnPid = waitpid(spawnPid, &childStatus, 0);
             //printf("    PARENT(%d): child(%d) terminated. Exiting\n", getpid(), spawnPid);
+            
         }
         else{
             //Don't wait for child's termination
@@ -310,6 +311,7 @@ void excuteOthers(char *command, char **args, char* inputFile, char* outputFile,
 		
 		break;
 	} 
+    return childStatus;
 }
 
 
@@ -353,8 +355,7 @@ int main(){
         //execute Built-in Commands first(exit, cd, and status)
         if(strcmp(currData->command, "cd") == 0) cd(currData->args);
         else if(strcmp(currData->command, "status") == 0) status(exitStatus);
-        else excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile, currData->isBackground);
-
+        else exitStatus = excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile, currData->isBackground);
         if (strcmp(input, "exit") == 0) eof = true;
     }
     
