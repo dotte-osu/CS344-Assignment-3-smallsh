@@ -150,6 +150,7 @@ char *getUserInput(){
 
 // Function to parse user input to struct inputData
 struct inputData *parseInput(char *input){
+    // Create memory space for currData
     struct inputData *currData = malloc(sizeof(struct inputData));
     // Get command
     char *saveptr;
@@ -215,11 +216,13 @@ void cd(char **args){
 /* Function to handle Built-in Commands "status"
    code reference: Exploration: Process API - Monitoring Child Processes */
 void status(int status){
+    // WIFEXITED returns true if the child was terminated normally
     if (WIFEXITED(status)) {
-        // If exited by status
+        // It exit normally. If exited by status. Example rerutn: 0 or 1
         printf("exit value %d\n", WEXITSTATUS(status));
     } else {
-        // If terminated by signal
+        // Did not exit normally. If terminated by signal.
+        // WTERMSIG will return the signal number that caused the child to terminate.
         printf("terminated by signal %d\n", WTERMSIG(status));
     }
 }
@@ -232,6 +235,7 @@ void checkBackground(){
     bgPid = waitpid(-1, &bgStatus, WNOHANG);
     // Wait till pgPid returns > 0. If the child hasn't terminated, waitpid will immediately return with value 0
     if(bgPid > 0) {
+        // WIFEXITED returns true if the child was terminated normally
         if(WIFEXITED(bgStatus)){
             // It exit normally
             printf("background pid %d is done. exit value %d\n", bgPid, WEXITSTATUS(bgStatus));
@@ -240,7 +244,7 @@ void checkBackground(){
             bgCount--;
         } 
         else{
-            // Did not exit normally
+            // Did not exit normally. If terminated by signal.
             printf("background pid %d is done. terminated by signal %d\n", bgPid, WTERMSIG(bgStatus));
             fflush(stdout);
             removePid(&head, bgPid);
@@ -284,7 +288,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
         if(!fgMode){
             // SIG_DFL – specifying this value means we want the default action to be taken for the signal type.
             SIGINT_action.sa_handler = SIG_DFL;
-			SIGINT_action.sa_flags = 0;
+			SIGINT_action.sa_flags = 0; // no flag
 			sigaction(SIGINT, &SIGINT_action, NULL);
             fflush(stdout);
         }
@@ -295,6 +299,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             // Open input file
             inFile = open(inputFile, O_RDONLY);
             if (inFile == -1) {
+                // Print if error
                 perror("source open()"); 
                 exit(1);
             }
@@ -302,6 +307,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             // Redirect stdin to input file
             result = dup2(inFile, 0);
             if (result == -1) {
+                // Print if error
                 perror("source dup2()"); 
                 exit(2);
             }
@@ -313,6 +319,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             // Open output file
             outFile = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             if (outFile == -1) {
+                // Print if error
                 perror("Unable to open output file\n");
                 exit(1);
             }
@@ -320,6 +327,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             // Redirect stdout to output file
             result = dup2(outFile, 1);
             if (result == -1) {
+                // Print if error
                 perror("Unable to assign output file\n");
                 exit(2);
             }
@@ -443,9 +451,6 @@ int main(){
             }
         }
         else exitStatus = excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile, currData->isBackground);
-
-        // Free struct
-        free(currData);
     }
     
     return 0;
