@@ -20,7 +20,7 @@ bool fgMode = false; //true == Entering foreground-only mode, false == Exiting f
 struct sigaction SIGINT_action = {0};
 struct sigaction SIGTSTP_action = {0};
 
-// struct for commands 
+// Struct to store commands 
 struct inputData{
     char    command[MAX_COMMAND];
     char    **args;
@@ -73,71 +73,70 @@ void removePid(struct Node** listHead, int pid)
 }
 
 
-//Function to replace string
+//Function to replace $$ (pid)
 char* replaceStr(char *basestr, char *pid)
 {
+    // Check for $$ to replace
+    // Store how many time we need to replace
     int i = 0;
-    int count = 0; //store how many time we need to replace
-    //check for $$
+    int count = 0; 
     for (i = 0; basestr[i] != '\0'; i++) {
-        //remove char from the front of string. check is string start with "$$"
+        // Remove char from the front of string. Check if string start with "$$"
         if (strstr(&basestr[i], "$$") == &basestr[i]) {
-            //if found, check how many time we need to replace
+            // If found, check how many time we need to replace
             count++;
-  
-            //skip index for "$$"
+            // Skip two index for "$$"
             i = i + 2 - 1;
         }
     }
-    //store to result    
+    // Store the change to result variable  
     int pidLen = strlen(pid);
     int length = strlen(basestr) -1 + count*(pidLen - 2) + 1;
     char *result = (char*)malloc(length);
     i = 0;//this is index for result string
     while (*basestr) {
-        //remove char from the front of string. check is string start with "$$"
+        // Remove char from the front of string. Check if string start with "$$"
         if (strstr(basestr, "$$") == basestr) {
-            //if $$ is found, replace with pid
+            // If $$ is found, replace with pid
             strcpy(&result[i], pid);
-            //move the index
+            // Move the index
             i = i + pidLen;
             basestr = basestr + 2;
         }
         else{
-            //copy the other part of string
+            // Copy the other part of string
             result[i] = *basestr;
             i++;
             basestr++;
         }    
-    }
-  
-    //add \0 at the end
+    }  
+    // Add \0 at the end
     result[i] = '\0';
     return result;
 }
 
-//Get user input (commands)
+// Function to get user input (commands)
 char *getUserInput(){
 
-    //print prompt
+    // Print prompt with ": "
     printf(": ");
-    //Flush the standard output to make sure it shows up on the terminal
+    // Flush the standard output to make sure it shows up on the terminal
     fflush(stdout);
     
-    //Get user input
+    // Get user input
     char *input = NULL;
     ssize_t bufsize = 0;
     getline(&input, &bufsize, stdin);
-    //ignore comment
+
+    // Ignore comment starting with "#"
     if(input[0]=='#') return "";;
     
-    //Remove newline from the end
+    // Remove newline from the end. We dont want to store it in args
     input[strlen(input) - 1] = 0;
     
-    //Replace $$ with process ID   
+    // Replace $$ with process ID   
     char *replacedInput = NULL;
-    if (strstr(input, "$$") != NULL) {
-        
+    if (strstr(input, "$$") != NULL) {   
         //input contains $$
         int pid = getpid();
         char pidStr[6];
@@ -148,36 +147,38 @@ char *getUserInput(){
     }
     return replacedInput == NULL ? input : replacedInput;
 }
+
+// Function to parse user input to struct inputData
 struct inputData *parseInput(char *input){
     struct inputData *currData = malloc(sizeof(struct inputData));
-    //Get command
+    // Get command
     char *saveptr;
     
-    //First word is always command
+    // First word is always command
     char *token = strtok_r(input, " ", &saveptr);
-    //currData->command = calloc(strlen(token) + 1, sizeof(char));
     strcpy(currData->command, token);
-    //printf("command %s\n", currData->command);
-    //args, input file, output file
+
+    // Store the rest: args, input file, output file, background(&)
     currData->args = malloc(MAX_ARG * sizeof(char*));
     int i = 0;
     while(token){
-        //printf("token %s\n", token);
         token = strtok_r(NULL, " ", &saveptr);
-            if(!token) return currData;
-        if(strcmp(token, "<") == 0 )
+        // If userinput only contains command (e.g echo) return blank struct
+        if(!token) return currData;
+
+        if(strcmp(token, "<") == 0 ) // Check input file
         {
             token = strtok_r(NULL, " ", &saveptr);
             currData->inputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currData->inputFile, token);
         }
-        else if(strcmp(token, ">") == 0 )
+        else if(strcmp(token, ">") == 0 ) // Check out put file
         {
             token = strtok_r(NULL, " ", &saveptr);
             currData->outputFile = calloc(strlen(token) + 1, sizeof(char));
             strcpy(currData->outputFile, token); 
         }
-        else if(strcmp(token, "&") == 0 )
+        else if(strcmp(token, "&") == 0 ) // Check backgroung comment
         {
             // The last word must be &. If the & character appears anywhere else.
             // If this is not the last word, it will set to false (see next line)
@@ -187,6 +188,7 @@ struct inputData *parseInput(char *input){
         }
         else
         {
+            // Store the rest of args
             currData->isBackground = false;
             currData->args[i] = token; 
             i++;
@@ -194,22 +196,24 @@ struct inputData *parseInput(char *input){
     }
     return currData;
 }
+
+// Function to handle Built-in Commands "cd"
 void cd(char **args){
-    //char cwd[PATH_MAX];
-    //getcwd(cwd, sizeof(cwd));
-    //printf("Current working dir: %s\n", cwd);
-    
+
+    // "cd" only    
     if(args[0] == NULL){
         //go to home directly
         if(chdir(getenv("HOME")) != 0) perror("chdir"); //chdir: Bad address
     }
-    else
+    else // "cd + directly"    
     {
         //move to a directly
         if(chdir(args[0]) != 0) perror("chdir");//chdir: Bad address
     }
 }
-//Exploration: Process API - Monitoring Child Processes
+
+/* Function to handle Built-in Commands "status"
+   code reference: Exploration: Process API - Monitoring Child Processes */
 void status(int status){
     if (WIFEXITED(status)) {
         // If exited by status
@@ -219,7 +223,9 @@ void status(int status){
         printf("terminated by signal %d\n", WTERMSIG(status));
     }
 }
-//Exploration: Process API - Monitoring Child Processes
+
+/* Function to check background commands
+   code reference: Exploration: Process API - Monitoring Child Processes */
 void checkBackground(){
     pid_t bgPid;
     int   bgStatus;
@@ -243,20 +249,28 @@ void checkBackground(){
     }
 }
 
+/* Function to excute no build-in command
+   code reference: Exploration: Process API - Executing a New Program 
+                   Exploration: Processes and I/O                     */
 int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, bool isBackground){
-    //char **newargv[] = { command, "do something", NULL };
+
     char **newargv = malloc(MAX_ARG * sizeof(char*));
+    
+    // Set command
     newargv[0] = command;
     int i=0;
+
+    // Copy user input to newargv[]
     while(args[i]){
         newargv[i+1] = args[i];
         i++;
     }
+
     int childStatus = 0;
     int inFile;
     int outFile;
     int result;
-    //Exploration: Process API - Executing a New Program
+
     // Fork a new process
     pid_t spawnPid = fork();
     switch(spawnPid){
@@ -265,6 +279,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
         exit(1);
         break;
     case 0:
+        // Run command in the child process
         // A child running as a foreground process must terminate itself when it receives SIGINT
         if(!fgMode){
             // SIG_DFL – specifying this value means we want the default action to be taken for the signal type.
@@ -273,9 +288,9 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
 			sigaction(SIGINT, &SIGINT_action, NULL);
             fflush(stdout);
         }
-        //Run command in the child process
-        //Exploration: Processes and I/O
-        //set input
+        
+        // Exploration: Processes and I/O
+        // Set input redirection
         if (inputFile) {
             // Open input file
             inFile = open(inputFile, O_RDONLY);
@@ -283,8 +298,7 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
                 perror("source open()"); 
                 exit(1);
             }
-            // Write to terminal
-            //printf("inFile == %d\n", inFile); 
+
             // Redirect stdin to input file
             result = dup2(inFile, 0);
             if (result == -1) {
@@ -294,16 +308,15 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             // Close
             fcntl(inFile, F_SETFD, FD_CLOEXEC);
         }
-        //set output
+        // Set output redirection
         if (outputFile) {
-            // open it
+            // Open output file
             outFile = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             if (outFile == -1) {
                 perror("Unable to open output file\n");
                 exit(1);
             }
-            // Write to terminal
-            //printf("outFile == %d\n", outFile); 
+
             // Redirect stdout to output file
             result = dup2(outFile, 1);
             if (result == -1) {
@@ -313,18 +326,20 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             // Close
             fcntl(outFile, F_SETFD, FD_CLOEXEC);
         }
+        // Error handling
         if (execvp(newargv[0], newargv)) {
             perror("execve");
             exit(2);
         }
         break;
     default:
-        //Exploration: Process API - Monitoring Child Processes
-        //In the parent process
+        // In the parent process
+        // Exploration: Process API - Monitoring Child Processes
         if (!isBackground || fgMode){
-            //Wait for child's termination
+            // Wait for child's termination
             spawnPid = waitpid(spawnPid, &childStatus, 0);
             
+            // Signal handling
             if (WIFSIGNALED(childStatus)) {
                 printf("terminated by signal %d\n", WTERMSIG(childStatus));
                 fflush(stdout);
@@ -337,9 +352,12 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
             
         }
         else{
-            //Don't wait for child's termination
-            //pid_t pid = waitpid(spawnPid, childStatus, WNOHANG);
+            // Don't wait for child's termination
             printf("background pid is %d\n", spawnPid);
+
+            // Keep background record for later use below
+            // 1. To check the background status
+            // 2. To kill on-going program when exiting
             bgCount++;
             addPid(&head, spawnPid);
             fflush(stdout);
@@ -350,9 +368,11 @@ int excuteOthers(char *command, char **args, char* inputFile, char* outputFile, 
     return childStatus;
 }
 
-//Exploration: Signal Handling API
-// Handler for SIGTSTP
+
+/* Function to handle SIGTSTP signals
+   code reference: Exploration: Signal Handling API              */
 void handle_SIGTSTP(int signo){
+    // If A CTRL-Z command is entered, it will switch to foreground-only mode
     if(!fgMode){
         char* message = "\nEntering foreground-only mode (& is now ignored)\n";
         write(STDOUT_FILENO, message, 50);
@@ -372,12 +392,11 @@ void handle_SIGTSTP(int signo){
     }
 }
 
-// This function prints contents of linked list starting
-// from the given node
+// Function to kill all the on-going programs before exiting
 void killAll(struct Node* node)
 {
     while (node != NULL) {
-        //SIGTERM is sent to terminate a process, but it is catchable unlike SIGKILL. 
+        //SIGTERM is sent to terminate a process. 
         kill(node->pid,SIGTERM);
         node = node->next;
     }
@@ -388,43 +407,32 @@ int main(){
     char *input;
     int exitStatus = 0;
 
-    
-    // SIGINT 
+    // SIGINT handling
     // SIG_IGN – specifying this value means that the signal type should be ignored
     SIGINT_action.sa_handler = SIG_IGN;
     sigaction(SIGINT, &SIGINT_action, NULL);
-    // SIGTSTP
+    // SIGTSTP handling
     SIGTSTP_action.sa_handler = handle_SIGTSTP;
     sigfillset(&SIGTSTP_action.sa_mask);
     //Setting SA_RESTART will cause an automatic restart of the interrupted system call or library function after the signal handler gets done.
     SIGTSTP_action.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
-    //Loop until end of file
+    // Loop until end of file
     while(!eof){
-        //get user input
+        // Get user input
         input = getUserInput();
+
         // Check background status
         if(bgCount > 0) checkBackground();
-        //ignroe blank line
+
+        // Ignroe blank line
         if(!strcmp(input, "")) continue;
-        //parse user input
+
+        // Parse user input
         struct inputData *currData = parseInput(input);
-        //print args (debug)
-        //int i = 0;
-        //while(currData->args[i]){
-        //    printf("args: %s\n", currData->args[i]);
-        //    i++;
-        //}
-        //create path
-        //char path[] = "/bin/";
-        //char *command = calloc(strlen(currData->command) + 1, sizeof(char));
-        //strcpy(command, currData->command);
-        //strcat(path, command);
-        //printf("path: %s\n", path);    
-        //printf("command: %s\n", currData->command);    
-        
-        //execute Built-in Commands first(exit, cd, and status)
+
+        // Execute commands 
         if(strcmp(currData->command, "cd") == 0) cd(currData->args);
         else if(strcmp(currData->command, "status") == 0) status(exitStatus);
         else if (strcmp(input, "exit") == 0) {
@@ -436,6 +444,7 @@ int main(){
         }
         else exitStatus = excuteOthers(currData->command, currData->args, currData->inputFile, currData->outputFile, currData->isBackground);
 
+        // Free struct
         free(currData);
     }
     
